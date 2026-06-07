@@ -1,1 +1,39 @@
-
+name: B站整合包监控
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 运行检查
+        run: python check_new.py > result.json
+      - name: 推送状态
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "auto"
+          git push
+      - name: 发送微信
+        env:
+          KEY: ${{ secrets.SERVERCHAN_KEY }}
+        run: |
+          import json, os, urllib.request, urllib.parse
+          with open("result.json") as f:
+            d = json.load(f)
+          if d["new"] == 0:
+            exit(0)
+          k = os.environ.get("KEY","")
+          if not k: exit(0)
+          v = "\n".join([f"{'🟢' if v['kw']=='整合包更新' else '🟡'} {v['title']}\n  {v['url']}" for v in d["videos"]])
+          c = f"发现{d['new']}个新视频\n\n{v}"
+          u = f"https://sctapi.ftqq.com/{k}.send"
+          d2 = urllib.parse.urlencode({"title":"B站整合包新视频","content":c}).encode()
+          urllib.request.urlopen(urllib.request.Request(u,data=d2),timeout=10)
+        shell: python
